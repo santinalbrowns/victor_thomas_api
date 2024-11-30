@@ -1,0 +1,13 @@
+version: "2"
+sql:
+  - engine: "mysql"
+    schema: "./migrations"
+    queries: "./queries"
+    gen:
+      go:
+        emit_json_tags: true
+        package: "repository"
+        out: "repository"
+        overrides:
+          - db_type: "sql.NullInt64"
+            go_type: "int64"

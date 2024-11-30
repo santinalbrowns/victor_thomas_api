@@ -1,0 +1,1 @@
+DROP TABLE IF EXISTS in_store_order_details;
