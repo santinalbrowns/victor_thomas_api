@@ -21,11 +21,16 @@ func (a *API) CustomerOnlineOrdersRoutes(router chi.Router) {
 	repo := repository.New(a.db)
 	handle := handler.NewOrderHandler(a.db, repo)
 
+	router.Get("/{sku}/item", handle.CustomerFindOnlineOrder)
+	router.Put("/{orderID}", handle.CustomerOrderPaid)
+
 	router.Group(func(r chi.Router) {
 
 		r.Use(a.auth.AuthJWT)
 
 		r.Post("/", handle.CreateOnlineOrder)
+		r.Get("/", handle.CustomerFindOnlineOrders)
+		r.Get("/{id}", handle.CustomerGetOnlineOrder)
 	})
 }
 

@@ -80,3 +80,14 @@ ORDER BY o.id DESC;
 SELECT COUNT(o.id) AS count FROM orders o
 JOIN online_order_details i ON o.id = i.order_id
 ORDER BY o.id DESC;
+
+-- name: FindOrderItemByProductSKU :one
+SELECT oi.*
+FROM order_items oi
+JOIN products p ON p.id = oi.product_id
+WHERE p.sku = ?;
+
+-- name: UpdateOrderStatus :exec
+UPDATE orders
+SET status = ?, updated_at = CURRENT_TIMESTAMP
+WHERE id = ?;

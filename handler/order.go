@@ -15,7 +15,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator"
-	"github.com/google/uuid"
 	"github.com/santinalbrowns/paychangu"
 )
 
@@ -529,8 +528,9 @@ func (h *orderHandler) CreateOnlineOrder(w http.ResponseWriter, r *http.Request)
 		customer.Phone = u.Phone.String
 	}
 
-	client := paychangu.New("pay_changu_api_key")
+	client := paychangu.New("SEC-W3BIN3UUUUq9tACnLOjeCYL5tFCg1YdS")
 
+	//TODO change the IP Address
 	request := paychangu.Request{
 		Amount:      10500,
 		Currency:    "MWK",
@@ -539,7 +539,7 @@ func (h *orderHandler) CreateOnlineOrder(w http.ResponseWriter, r *http.Request)
 		Email:       customer.Email,
 		CallbackURL: "http://172.20.10.3:5000/success",
 		ReturnURL:   "http://172.20.10.3:5000/cancel",
-		TxRef:       uuid.NewString(),
+		TxRef:       strconv.Itoa(int(orderID)),
 		Customization: struct {
 			Title       string `json:"title"`
 			Description string `json:"description"`
@@ -1385,6 +1385,456 @@ func (h *orderHandler) CashierFindInStoreOrder(w http.ResponseWriter, r *http.Re
 		Details: dto.StoreOrderDetails{
 			Store:   store,
 			Cashier: cashier,
+		},
+		CreatedAt: or.CreatedAt.Time.UTC().Format(time.RFC3339),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(order)
+}
+
+func (h *orderHandler) CustomerFindOnlineOrder(w http.ResponseWriter, r *http.Request) {
+	ctx := context.Background()
+
+	// Get the order ID from URL params
+	sku := chi.URLParam(r, "sku")
+	io, err := h.repo.FindOrderItemByProductSKU(ctx, sku)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Order Item not found", http.StatusNotFound)
+		} else {
+			http.Error(w, "Something went wrong", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	od, err := h.repo.FindOnlineOrderDetails(ctx, io.OrderID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Order details not found", http.StatusNotFound)
+		} else {
+			http.Error(w, "Something went wrong", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	or, err := h.repo.FindOrderWithChannel(ctx, repository.FindOrderWithChannelParams{
+		ID:      io.OrderID,
+		Channel: repository.OrdersChannelOnline,
+	})
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Order not found", http.StatusNotFound)
+		} else {
+			http.Error(w, "Something went wrong", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	orderItems, err := h.repo.FindOrderItems(ctx, or.ID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Order items not found", http.StatusNotFound)
+		} else {
+			http.Error(w, "Something went wrong", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	var items = []dto.ItemResponse{}
+
+	for _, item := range orderItems {
+
+		p, err := h.repo.FindProduct(ctx, item.ProductID)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				http.Error(w, "Product not found", http.StatusNotFound)
+			} else {
+				http.Error(w, "Something went wrong", http.StatusInternalServerError)
+			}
+			return
+		}
+
+		imagesResults, err := h.repo.FindProductImages(ctx, p.ID)
+		if err != nil {
+			http.Error(w, "Something went wrong", http.StatusInternalServerError)
+			return
+		}
+
+		var images = []dto.ImageResponse{}
+
+		for _, i := range imagesResults {
+			images = append(images, dto.ImageResponse{ID: i.ID, Name: i.Name})
+		}
+
+		items = append(items, dto.ItemResponse{
+			ID:         p.ID,
+			Slug:       p.Slug,
+			Name:       p.Name,
+			SKU:        p.Sku,
+			Status:     p.Status,
+			Visibility: p.Visibility,
+			Images:     images,
+			Quantity:   item.Quantity,
+			Price:      item.Price,
+		})
+	}
+
+	od, err = h.repo.FindOnlineOrderDetails(ctx, or.ID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Order details not found", http.StatusNotFound)
+		} else {
+			http.Error(w, "Something went wrong", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	u, err := h.repo.FindUserByID(ctx, uint64(od.CustomerID.Int64))
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Customer not found", http.StatusNotFound)
+		} else {
+			http.Error(w, "Something went wrong", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	customer := dto.UserResponse{
+		ID:        u.ID,
+		Firstname: u.Firstname,
+		Lastname:  u.Lastname,
+		Email:     u.Email,
+	}
+
+	if u.Phone.Valid {
+		customer.Phone = u.Phone.String
+	}
+
+	order := dto.OnlineOrderResponse{
+		ID:      or.ID,
+		Number:  or.Number,
+		Channel: string(or.Channel),
+		Status:  string(or.Status),
+		Total:   or.Total,
+		Items:   items,
+		Details: dto.OnlineOrderDetails{
+			Customer: customer,
+		},
+		CreatedAt: or.CreatedAt.Time.UTC().Format(time.RFC3339),
+	}
+
+	if or.Status == repository.OrdersStatusCompleted {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(order)
+	} else {
+		http.Error(w, "Payment not clear", http.StatusForbidden)
+		return
+	}
+}
+
+func (h *orderHandler) CustomerOrderPaid(w http.ResponseWriter, r *http.Request) {
+	ctx := context.Background()
+
+	// Get the order ID from URL params
+	orderIDStr := chi.URLParam(r, "orderID")
+	orderID, err := strconv.ParseUint(orderIDStr, 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid order ID", http.StatusBadRequest)
+		return
+	}
+
+	o, err := h.repo.FindOrder(ctx, orderID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Order not found", http.StatusNotFound)
+		} else {
+			http.Error(w, "Something went wrong", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	err = h.repo.UpdateOrderStatus(ctx, repository.UpdateOrderStatusParams{
+		Status: repository.OrdersStatusCompleted,
+		ID:     o.ID,
+	})
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Order not found", http.StatusNotFound)
+		} else {
+			http.Error(w, "Something went wrong", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func (h *orderHandler) CustomerFindOnlineOrders(w http.ResponseWriter, r *http.Request) {
+	ctx := context.Background()
+	_, err := middleware.GuardCustomer(r.Context(), h.repo)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Parse query parameters for pagination
+	limitStr := r.URL.Query().Get("limit")
+	offsetStr := r.URL.Query().Get("offset")
+
+	// Convert limit and offset to integers
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil {
+		limit = 20 // Default limit
+	}
+	offset, err := strconv.Atoi(offsetStr)
+	if err != nil {
+		offset = 0 // Default offset
+	}
+
+	count, err := h.repo.CountOnlineOrders(ctx)
+	if err != nil {
+		fmt.Println(err)
+		http.Error(w, "Something went wrong", http.StatusInternalServerError)
+		return
+	}
+
+	results, err := h.repo.FindOnlineOrders(ctx, repository.FindOnlineOrdersParams{
+		Limit:  int32(limit),
+		Offset: int32(offset),
+	})
+	if err != nil {
+		http.Error(w, "Something went wrong", http.StatusInternalServerError)
+		return
+	}
+
+	var orders = []dto.OnlineOrderResponse{}
+
+	for _, or := range results {
+
+		orderItems, err := h.repo.FindOrderItems(ctx, or.ID)
+		if err != nil {
+			http.Error(w, "Something went wrong", http.StatusInternalServerError)
+			return
+		}
+
+		var items = []dto.ItemResponse{}
+
+		for _, item := range orderItems {
+
+			p, err := h.repo.FindProduct(ctx, item.ProductID)
+			if err != nil {
+				if err == sql.ErrNoRows {
+					http.Error(w, "Product not found", http.StatusNotFound)
+				} else {
+					http.Error(w, "Something went wrong", http.StatusInternalServerError)
+				}
+				return
+			}
+
+			imagesResults, err := h.repo.FindProductImages(ctx, p.ID)
+			if err != nil {
+				http.Error(w, "Something went wrong", http.StatusInternalServerError)
+				return
+			}
+
+			var images = []dto.ImageResponse{}
+
+			for _, i := range imagesResults {
+				images = append(images, dto.ImageResponse{ID: i.ID, Name: i.Name})
+			}
+
+			items = append(items, dto.ItemResponse{
+				ID:         p.ID,
+				Slug:       p.Slug,
+				Name:       p.Name,
+				SKU:        p.Sku,
+				Status:     p.Status,
+				Visibility: p.Visibility,
+				Images:     images,
+				Quantity:   item.Quantity,
+				Price:      item.Price,
+			})
+		}
+
+		od, err := h.repo.FindOnlineOrderDetails(ctx, or.ID)
+		if err != nil {
+			http.Error(w, "Something went wrong", http.StatusInternalServerError)
+			return
+		}
+
+		//TODO Cashier can be removed
+		u, err := h.repo.FindUserByID(ctx, uint64(od.CustomerID.Int64))
+		if err != nil {
+			if err == sql.ErrNoRows {
+				http.Error(w, "Customer not found", http.StatusNotFound)
+			} else {
+				http.Error(w, "Something went wrong", http.StatusInternalServerError)
+			}
+			return
+		}
+
+		customer := dto.UserResponse{
+			ID:        u.ID,
+			Firstname: u.Firstname,
+			Lastname:  u.Lastname,
+			Email:     u.Email,
+		}
+
+		if u.Phone.Valid {
+			customer.Phone = u.Phone.String
+		}
+
+		order := dto.OnlineOrderResponse{
+			ID:      or.ID,
+			Number:  or.Number,
+			Channel: string(or.Channel),
+			Status:  string(or.Status),
+			Total:   or.Total,
+			Items:   items,
+			Details: dto.OnlineOrderDetails{
+				Customer: customer,
+			},
+			CreatedAt: or.CreatedAt.Time.UTC().Format(time.RFC3339),
+		}
+
+		orders = append(orders, order)
+	}
+
+	response := map[string]interface{}{
+		"total":  count,
+		"limit":  limit,
+		"offset": offset,
+		"data":   orders,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(response)
+
+}
+
+func (h *orderHandler) CustomerGetOnlineOrder(w http.ResponseWriter, r *http.Request) {
+	ctx := context.Background()
+	_, err := middleware.GuardCustomer(r.Context(), h.repo)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Get the order ID from URL params
+	orderIDStr := chi.URLParam(r, "id")
+	orderID, err := strconv.ParseUint(orderIDStr, 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid store ID", http.StatusBadRequest)
+		return
+	}
+
+	or, err := h.repo.FindOrderWithChannel(ctx, repository.FindOrderWithChannelParams{
+		ID:      orderID,
+		Channel: repository.OrdersChannelOnline,
+	})
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Order not found", http.StatusNotFound)
+		} else {
+			http.Error(w, "Something went wrong", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	orderItems, err := h.repo.FindOrderItems(ctx, or.ID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Order items not found", http.StatusNotFound)
+		} else {
+			http.Error(w, "Something went wrong", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	var items = []dto.ItemResponse{}
+
+	for _, item := range orderItems {
+
+		p, err := h.repo.FindProduct(ctx, item.ProductID)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				http.Error(w, "Product not found", http.StatusNotFound)
+			} else {
+				http.Error(w, "Something went wrong", http.StatusInternalServerError)
+			}
+			return
+		}
+
+		imagesResults, err := h.repo.FindProductImages(ctx, p.ID)
+		if err != nil {
+			http.Error(w, "Something went wrong", http.StatusInternalServerError)
+			return
+		}
+
+		var images = []dto.ImageResponse{}
+
+		for _, i := range imagesResults {
+			images = append(images, dto.ImageResponse{ID: i.ID, Name: i.Name})
+		}
+
+		items = append(items, dto.ItemResponse{
+			ID:         p.ID,
+			Slug:       p.Slug,
+			Name:       p.Name,
+			SKU:        p.Sku,
+			Status:     p.Status,
+			Visibility: p.Visibility,
+			Images:     images,
+			Quantity:   item.Quantity,
+			Price:      item.Price,
+		})
+	}
+
+	od, err := h.repo.FindOnlineOrderDetails(ctx, or.ID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Order details not found", http.StatusNotFound)
+		} else {
+			http.Error(w, "Something went wrong", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	//TODO Cashier can be removed
+	u, err := h.repo.FindUserByID(ctx, uint64(od.CustomerID.Int64))
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Cashier not found", http.StatusNotFound)
+		} else {
+			http.Error(w, "Something went wrong", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	customer := dto.UserResponse{
+		ID:        u.ID,
+		Firstname: u.Firstname,
+		Lastname:  u.Lastname,
+		Email:     u.Email,
+	}
+
+	if u.Phone.Valid {
+		customer.Phone = u.Phone.String
+	}
+
+	order := dto.OnlineOrderResponse{
+		ID:      or.ID,
+		Number:  or.Number,
+		Channel: string(or.Channel),
+		Status:  string(or.Status),
+		Total:   or.Total,
+		Items:   items,
+		Details: dto.OnlineOrderDetails{
+			Customer: customer,
 		},
 		CreatedAt: or.CreatedAt.Time.UTC().Format(time.RFC3339),
 	}

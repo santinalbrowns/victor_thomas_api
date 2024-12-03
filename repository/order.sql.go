@@ -155,6 +155,27 @@ func (q *Queries) FindOrder(ctx context.Context, id uint64) (Order, error) {
 	return i, err
 }
 
+const findOrderItemByProductSKU = `-- name: FindOrderItemByProductSKU :one
+SELECT oi.id, oi.order_id, oi.product_id, oi.quantity, oi.price, oi.total
+FROM order_items oi
+JOIN products p ON p.id = oi.product_id
+WHERE p.sku = ?
+`
+
+func (q *Queries) FindOrderItemByProductSKU(ctx context.Context, sku string) (OrderItem, error) {
+	row := q.db.QueryRowContext(ctx, findOrderItemByProductSKU, sku)
+	var i OrderItem
+	err := row.Scan(
+		&i.ID,
+		&i.OrderID,
+		&i.ProductID,
+		&i.Quantity,
+		&i.Price,
+		&i.Total,
+	)
+	return i, err
+}
+
 const findOrderItems = `-- name: FindOrderItems :many
 SELECT id, order_id, product_id, quantity, price, total FROM order_items WHERE order_id = ?
 `
@@ -420,5 +441,21 @@ func (q *Queries) InsertOrderItem(ctx context.Context, arg InsertOrderItemParams
 		arg.Quantity,
 		arg.Price,
 	)
+	return err
+}
+
+const updateOrderStatus = `-- name: UpdateOrderStatus :exec
+UPDATE orders
+SET status = ?, updated_at = CURRENT_TIMESTAMP
+WHERE id = ?
+`
+
+type UpdateOrderStatusParams struct {
+	Status OrdersStatus `json:"status"`
+	ID     uint64       `json:"id"`
+}
+
+func (q *Queries) UpdateOrderStatus(ctx context.Context, arg UpdateOrderStatusParams) error {
+	_, err := q.db.ExecContext(ctx, updateOrderStatus, arg.Status, arg.ID)
 	return err
 }

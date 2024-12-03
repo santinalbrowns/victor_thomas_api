@@ -10,12 +10,18 @@ LIMIT ? OFFSET ?;
 -- name: FindPurchase :one
 SELECT * FROM purchases WHERE id  = ?;
 
--- name: FindPurchaseByProductSKU :many
+-- name: FindPurchasesByProductSKU :many
 SELECT s.* FROM purchases s
 JOIN products p ON p.id = s.product_id
 WHERE p.sku = ?
 ORDER BY id DESC
 LIMIT ? OFFSET ?;
+
+-- name: FindPurchaseByProductSKU :one
+SELECT s.* FROM purchases s
+JOIN products p ON p.id = s.product_id
+WHERE p.sku = ?
+LIMIT 1;
 
 -- name: DeletePurchase :exec
 DELETE FROM purchases

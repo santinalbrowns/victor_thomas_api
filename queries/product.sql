@@ -63,3 +63,17 @@ LEFT JOIN
     GROUP BY product_id) sold 
 ON p.id = sold.product_id
 WHERE p.id = ?;
+
+-- name: FindStockProducts :many
+SELECT DISTINCT p.*
+FROM products p
+JOIN purchases pur ON pur.product_id = p.id
+ORDER BY p.id DESC
+LIMIT ? OFFSET ?;
+
+-- name: FindStockProduct :one
+SELECT DISTINCT p.*
+FROM products p
+JOIN purchases pur ON pur.product_id = p.id
+WHERE p.sku = ?
+ORDER BY p.id DESC;

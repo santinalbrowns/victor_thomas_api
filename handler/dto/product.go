@@ -21,6 +21,19 @@ type ProductResponse struct {
 	Images      []ImageResponse `json:"images"`
 }
 
+type CustomerProductResponse struct {
+	ID          uint64          `json:"id"`
+	Slug        string          `json:"slug"`
+	Name        string          `json:"name"`
+	Description *string         `json:"description"`
+	SKU         string          `json:"sku"`
+	CategoryID  int64           `json:"category_id"`
+	Status      bool            `json:"status"`
+	Visibility  bool            `json:"visibility"`
+	Images      []ImageResponse `json:"images"`
+	Price       float64         `json:"price"`
+}
+
 type ItemResponse struct {
 	ID          uint64          `json:"id"`
 	Slug        string          `json:"slug"`

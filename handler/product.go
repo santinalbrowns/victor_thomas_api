@@ -577,10 +577,21 @@ func (h *productHandler) CustomerFindOne(w http.ResponseWriter, r *http.Request)
 	sku := chi.URLParam(r, "sku")
 
 	// Retrieve the product
-	product, err := h.repo.FindProductBySKU(ctx, sku)
+	product, err := h.repo.FindStockProduct(ctx, sku)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			http.Error(w, "Product not found", http.StatusNotFound)
+		} else {
+			fmt.Println(err)
+			http.Error(w, "Something went wrong", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	purchase, err := h.repo.FindPurchaseByProductSKU(ctx, product.Sku)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "purchase not found", http.StatusNotFound)
 		} else {
 			fmt.Println(err)
 			http.Error(w, "Something went wrong", http.StatusInternalServerError)
@@ -602,7 +613,7 @@ func (h *productHandler) CustomerFindOne(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Map to response structure
-	response := dto.ProductResponse{
+	response := dto.CustomerProductResponse{
 		ID:         product.ID,
 		Slug:       product.Slug,
 		Name:       product.Name,
@@ -610,6 +621,7 @@ func (h *productHandler) CustomerFindOne(w http.ResponseWriter, r *http.Request)
 		Status:     product.Status,
 		Visibility: product.Visibility,
 		Images:     images,
+		Price:      purchase.SellingPrice,
 	}
 
 	if product.Description.Valid {

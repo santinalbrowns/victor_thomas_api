@@ -176,6 +176,77 @@ func (q *Queries) FindProducts(ctx context.Context, arg FindProductsParams) ([]P
 	return items, nil
 }
 
+const findStockProduct = `-- name: FindStockProduct :one
+SELECT DISTINCT p.id, p.slug, p.name, p.description, p.sku, p.category_id, p.status, p.visibility, p.created_at
+FROM products p
+JOIN purchases pur ON pur.product_id = p.id
+WHERE p.sku = ?
+ORDER BY p.id DESC
+`
+
+func (q *Queries) FindStockProduct(ctx context.Context, sku string) (Product, error) {
+	row := q.db.QueryRowContext(ctx, findStockProduct, sku)
+	var i Product
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.Name,
+		&i.Description,
+		&i.Sku,
+		&i.CategoryID,
+		&i.Status,
+		&i.Visibility,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const findStockProducts = `-- name: FindStockProducts :many
+SELECT DISTINCT p.id, p.slug, p.name, p.description, p.sku, p.category_id, p.status, p.visibility, p.created_at
+FROM products p
+JOIN purchases pur ON pur.product_id = p.id
+ORDER BY p.id DESC
+LIMIT ? OFFSET ?
+`
+
+type FindStockProductsParams struct {
+	Limit  int32 `json:"limit"`
+	Offset int32 `json:"offset"`
+}
+
+func (q *Queries) FindStockProducts(ctx context.Context, arg FindStockProductsParams) ([]Product, error) {
+	rows, err := q.db.QueryContext(ctx, findStockProducts, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Product
+	for rows.Next() {
+		var i Product
+		if err := rows.Scan(
+			&i.ID,
+			&i.Slug,
+			&i.Name,
+			&i.Description,
+			&i.Sku,
+			&i.CategoryID,
+			&i.Status,
+			&i.Visibility,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const insertProduct = `-- name: InsertProduct :execlastid
 INSERT INTO products (slug, name, description, sku, category_id, status, visibility)
 VALUES (?, ?, ?, ?, ?, ?, ?)

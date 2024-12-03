@@ -55,22 +55,44 @@ func (q *Queries) FindPurchase(ctx context.Context, id uint64) (Purchase, error)
 	return i, err
 }
 
-const findPurchaseByProductSKU = `-- name: FindPurchaseByProductSKU :many
+const findPurchaseByProductSKU = `-- name: FindPurchaseByProductSKU :one
 SELECT s.id, s.product_id, s.date, s.quantity, s.order_price, s.selling_price, s.store_id, s.user_id, s.created_at, s.updated_at FROM purchases s
 JOIN products p ON p.id = s.product_id
 WHERE p.sku = ?
+LIMIT 1
+`
+
+func (q *Queries) FindPurchaseByProductSKU(ctx context.Context, sku string) (Purchase, error) {
+	row := q.db.QueryRowContext(ctx, findPurchaseByProductSKU, sku)
+	var i Purchase
+	err := row.Scan(
+		&i.ID,
+		&i.ProductID,
+		&i.Date,
+		&i.Quantity,
+		&i.OrderPrice,
+		&i.SellingPrice,
+		&i.StoreID,
+		&i.UserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const findPurchases = `-- name: FindPurchases :many
+SELECT id, product_id, date, quantity, order_price, selling_price, store_id, user_id, created_at, updated_at FROM purchases
 ORDER BY id DESC
 LIMIT ? OFFSET ?
 `
 
-type FindPurchaseByProductSKUParams struct {
-	Sku    string `json:"sku"`
-	Limit  int32  `json:"limit"`
-	Offset int32  `json:"offset"`
+type FindPurchasesParams struct {
+	Limit  int32 `json:"limit"`
+	Offset int32 `json:"offset"`
 }
 
-func (q *Queries) FindPurchaseByProductSKU(ctx context.Context, arg FindPurchaseByProductSKUParams) ([]Purchase, error) {
-	rows, err := q.db.QueryContext(ctx, findPurchaseByProductSKU, arg.Sku, arg.Limit, arg.Offset)
+func (q *Queries) FindPurchases(ctx context.Context, arg FindPurchasesParams) ([]Purchase, error) {
+	rows, err := q.db.QueryContext(ctx, findPurchases, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -103,19 +125,22 @@ func (q *Queries) FindPurchaseByProductSKU(ctx context.Context, arg FindPurchase
 	return items, nil
 }
 
-const findPurchases = `-- name: FindPurchases :many
-SELECT id, product_id, date, quantity, order_price, selling_price, store_id, user_id, created_at, updated_at FROM purchases
+const findPurchasesByProductSKU = `-- name: FindPurchasesByProductSKU :many
+SELECT s.id, s.product_id, s.date, s.quantity, s.order_price, s.selling_price, s.store_id, s.user_id, s.created_at, s.updated_at FROM purchases s
+JOIN products p ON p.id = s.product_id
+WHERE p.sku = ?
 ORDER BY id DESC
 LIMIT ? OFFSET ?
 `
 
-type FindPurchasesParams struct {
-	Limit  int32 `json:"limit"`
-	Offset int32 `json:"offset"`
+type FindPurchasesByProductSKUParams struct {
+	Sku    string `json:"sku"`
+	Limit  int32  `json:"limit"`
+	Offset int32  `json:"offset"`
 }
 
-func (q *Queries) FindPurchases(ctx context.Context, arg FindPurchasesParams) ([]Purchase, error) {
-	rows, err := q.db.QueryContext(ctx, findPurchases, arg.Limit, arg.Offset)
+func (q *Queries) FindPurchasesByProductSKU(ctx context.Context, arg FindPurchasesByProductSKUParams) ([]Purchase, error) {
+	rows, err := q.db.QueryContext(ctx, findPurchasesByProductSKU, arg.Sku, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
