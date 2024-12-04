@@ -537,8 +537,8 @@ func (h *orderHandler) CreateOnlineOrder(w http.ResponseWriter, r *http.Request)
 		FirstName:   customer.Firstname,
 		LastName:    customer.Lastname,
 		Email:       customer.Email,
-		CallbackURL: "http://172.20.10.3:5000/success",
-		ReturnURL:   "http://172.20.10.3:5000/cancel",
+		CallbackURL: "http://192.168.0.101:5000/success",
+		ReturnURL:   "http://192.168.0.101:5000/cancel",
 		TxRef:       strconv.Itoa(int(orderID)),
 		Customization: struct {
 			Title       string `json:"title"`
