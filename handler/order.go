@@ -1032,6 +1032,51 @@ func (h *orderHandler) AdminFindInStoreOrder(w http.ResponseWriter, r *http.Requ
 	json.NewEncoder(w).Encode(order)
 }
 
+func (h *orderHandler) AdminReport(w http.ResponseWriter, r *http.Request) {
+	ctx := context.Background()
+	_, err := middleware.GuardAdmin(r.Context(), h.repo)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	countCategories, err := h.repo.CountCategories(ctx)
+	if err != nil {
+		http.Error(w, "Something went wrong", http.StatusInternalServerError)
+		return
+	}
+
+	countProducts, err := h.repo.CountProducts(ctx)
+	if err != nil {
+		http.Error(w, "Something went wrong", http.StatusInternalServerError)
+		return
+	}
+
+	countPurchases, err := h.repo.CountPurchases(ctx)
+	if err != nil {
+		http.Error(w, "Something went wrong", http.StatusInternalServerError)
+		return
+	}
+
+	countSales, err := h.repo.CountOnlineOrders(ctx)
+	if err != nil {
+		http.Error(w, "Something went wrong", http.StatusInternalServerError)
+		return
+	}
+
+	response := dto.Report{
+		Categories: countCategories,
+		Products:   countProducts,
+		Purchases:  countPurchases,
+		Sales:      countSales,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(response)
+
+}
+
 func (h *orderHandler) CashierFindInStoreOrders(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
 	cashierID, err := middleware.GuardCashier(r.Context(), h.repo)

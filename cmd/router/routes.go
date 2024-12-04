@@ -16,6 +16,7 @@ func (a *API) Routes() *chi.Mux {
 	router.Route("/purchases", a.PurchasesRoutes)
 	router.Route("/orders", a.InStoreOrdersRoutes)
 	router.Route("/cashiers", a.StoreUsersRoutes)
+	router.Route("/reports", a.ReportsRoutes)
 
 	return router
 }
@@ -125,5 +126,17 @@ func (a *API) StoreUsersRoutes(router chi.Router) {
 		r.Post("/", handle.AdminAssignStoreUser)
 		r.Get("/stores/{id}", handle.AdminFindStoreUsers)
 		r.Delete("/{userID}/stores/{storeID}", handle.AdminDeleteStoreUser)
+	})
+}
+
+func (a *API) ReportsRoutes(router chi.Router) {
+	repo := repository.New(a.db)
+	o := handler.NewOrderHandler(a.db, repo)
+
+	router.Group(func(r chi.Router) {
+
+		r.Use(a.auth.AuthJWT)
+
+		r.Get("/summary", o.AdminReport)
 	})
 }
